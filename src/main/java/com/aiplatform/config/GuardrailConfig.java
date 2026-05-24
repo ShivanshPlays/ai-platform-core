@@ -1,10 +1,8 @@
 package com.aiplatform.config;
 
-import com.aiplatform.guardrail.ApiKeyInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -35,27 +33,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class GuardrailConfig implements WebMvcConfigurer {
 
-    // MERN analogy: const { apiKeyMiddleware } = dependencies
-    private final ApiKeyInterceptor apiKeyInterceptor;
-
     // Allowed CORS origins — override in application.yml with app.cors.allowed-origins
     // MERN analogy: cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') })
+    // Origin-based request validation is handled by OriginAllowlistFilter (@Component).
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String[] allowedOrigins;
-
-    public GuardrailConfig(ApiKeyInterceptor apiKeyInterceptor) {
-        this.apiKeyInterceptor = apiKeyInterceptor;
-    }
-
-    /**
-     * Register ApiKeyInterceptor for all /api/** paths.
-     *
-     * MERN analogy: app.use('/api', apiKeyMiddleware)
-     */
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(apiKeyInterceptor).addPathPatterns("/api/**");
-    }
 
     /**
      * Allow cross-origin requests from the React frontend (Vercel) and local dev (Vite).
