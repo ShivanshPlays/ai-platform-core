@@ -52,9 +52,13 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *   "Authentication at the API gateway level ensures no request reaches
  *    an LLM without a verified identity, enabling per-user rate limiting
  *    and audit logging."
+ *
+ * NOTE: Not active by default. CORS in GuardrailConfig is the active auth
+ * mechanism. Re-activate by adding @Component and registering in GuardrailConfig
+ * when proper backend-issued API keys (not Gemini keys) are introduced.
  * ══════════════════════════════════════════════════════════════════════════
  */
-@Component
+// @Component  — inactive; register in GuardrailConfig when backend-issued API keys are added
 public class ApiKeyInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(ApiKeyInterceptor.class);

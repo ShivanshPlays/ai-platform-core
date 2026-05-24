@@ -35,7 +35,6 @@ public class GuardrailConfig implements WebMvcConfigurer {
 
     // Allowed CORS origins — override in application.yml with app.cors.allowed-origins
     // MERN analogy: cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') })
-    // Origin-based request validation is handled by OriginAllowlistFilter (@Component).
     @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
     private String[] allowedOrigins;
 
@@ -43,15 +42,22 @@ public class GuardrailConfig implements WebMvcConfigurer {
      * Allow cross-origin requests from the React frontend (Vercel) and local dev (Vite).
      * SSE endpoints (/api/stream/**, /api/verbose-plan) need CORS to work in browsers.
      *
+     * Best practices followed (ref: OPTIONS/CORS article):
+     *   - allowedOrigins: explicit whitelist, never * — prevents rogue domain access
+     *   - allowedMethods: only GET + POST — OPTIONS preflight is handled by Spring automatically
+     *   - allowedHeaders: only headers the UI actually sends — no wildcard
+     *   - allowCredentials: NOT set — avoids the forbidden * + credentials combination
+     *   - maxAge: 3600s — reduces preflight roundtrips without over-caching policy changes
+     *
      * MERN analogy:
-     *   app.use(cors({ origin: ['http://localhost:5173', 'https://your-app.vercel.app'] }))
+     *   app.use(cors({ origin: [...], methods: ['GET','POST'], allowedHeaders: [...] }))
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
                 .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "OPTIONS")
-                .allowedHeaders("*")
+                .allowedMethods("GET", "POST")
+                .allowedHeaders("Content-Type", "X-User-Id", "X-User-Tier")
                 .exposedHeaders("Content-Type")
                 .maxAge(3600);
     }
