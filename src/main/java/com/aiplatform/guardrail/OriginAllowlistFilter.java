@@ -54,9 +54,13 @@ import java.util.stream.Collectors;
  *   - Allow port 443 inbound only from Vercel IP ranges or Cloudflare ranges
  *   - This blocks non-browser direct API calls at the network layer
  *   - See README for specific Vercel/Cloudflare CIDR ranges
+ *
+ * NOTE: Not active by default. CORS in GuardrailConfig (addCorsMappings) is
+ * sufficient for browser-based origin validation. Activate this filter by
+ * adding @Component if server-level pre-processing rejection is required.
  * ══════════════════════════════════════════════════════════════════════════
  */
-@Component
+// @Component  — inactive; CORS in GuardrailConfig is the active origin guard
 public class OriginAllowlistFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(OriginAllowlistFilter.class);
