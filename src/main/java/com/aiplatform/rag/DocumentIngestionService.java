@@ -108,12 +108,21 @@ public class DocumentIngestionService {
         // Guard: if splitter returns nothing (content too short), index as-is
         List<Document> toStore = chunks.isEmpty() ? List.of(rawDoc) : chunks;
 
+        // Capture a per-chunk breakdown for transparency (issue #8) — this is
+        // purely descriptive metadata for the UI; it does not affect indexing.
+        List<ChunkInfo> chunkInfos = new ArrayList<>();
+        for (int i = 0; i < toStore.size(); i++) {
+            String text = toStore.get(i).getText();
+            String preview = text.length() > 100 ? text.substring(0, 100) + "…" : text;
+            chunkInfos.add(new ChunkInfo(i, text.length(), preview));
+        }
+
         // Step 3: embed + persist  — VectorStore.add() calls EmbeddingModel internally:
         //   for each chunk → embeddingModel.embed(chunk.content) → store (text, vector)
         // MERN analogy: await vectorStore.addDocuments(toStore)
         vectorStore.add(toStore);
 
-        return new IngestResult(docName, toStore.size());
+        return new IngestResult(docName, toStore.size(), chunkInfos);
     }
 
     /**
@@ -139,12 +148,19 @@ public class DocumentIngestionService {
     public record RawDocument(String docName, String content) {}
 
     /**
+     * Per-chunk breakdown, for showing how a document was split (issue #8:
+     * RAG transparency — "show how the files are broken down").
+     * MERN analogy: type ChunkInfo = { index: number; charCount: number; preview: string }
+     */
+    public record ChunkInfo(int index, int charCount, String preview) {}
+
+    /**
      * Result returned to the caller after ingestion.
-     * MERN analogy: type IngestResult = { docName: string; chunkCount: number }
+     * MERN analogy: type IngestResult = { docName: string; chunkCount: number; chunks: ChunkInfo[] }
      *
      * Book ref: Chapter 17 — RAG: Chunking & Ingestion
      *   "Return the chunk count so the caller can sanity-check that chunking
      *    worked as expected — especially important when testing in dev."
      */
-    public record IngestResult(String docName, int chunkCount) {}
+    public record IngestResult(String docName, int chunkCount, List<ChunkInfo> chunks) {}
 }

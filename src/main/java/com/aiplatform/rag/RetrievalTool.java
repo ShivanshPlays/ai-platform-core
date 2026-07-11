@@ -6,7 +6,9 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -105,7 +107,36 @@ public class RetrievalTool {
      *    ingestion time — mismatched models destroy similarity scores."
      */
     public String retrieveContext(String query) {
-        if (vectorStore == null || query == null || query.isBlank()) return NO_CONTEXT;
+        return retrieveContextWithTrace(query).context();
+    }
+
+    /**
+     * One reranked chunk, with both scoring stages visible (issue #8: RAG
+     * transparency — "demonstrate how query rewriter and top-k reranking helps").
+     *
+     * cosineScore  — the initial VectorStore.similaritySearch() score (semantic
+     *                similarity, from Document.getScore()).
+     * rerankScore  — the BM25-style Jaccard term-overlap score RerankingService
+     *                used to reorder the candidates.
+     * rank         — final position (1-based) after reranking.
+     *
+     * MERN analogy: type RankedChunk = { preview, cosineScore, rerankScore, rank }
+     */
+    public record RankedChunk(String preview, double cosineScore, double rerankScore, int rank) {}
+
+    /** Context string plus the ranked-chunk trace that produced it. */
+    public record RetrievalResult(String context, List<RankedChunk> rankedChunks) {}
+
+    /**
+     * Same retrieval + rerank pipeline as {@link #retrieveContext(String)}, but
+     * also returns the per-chunk scores at both stages instead of discarding
+     * them after picking the winning text. Used by the verbose pipeline
+     * endpoint to show why reranking changed (or didn't change) the ordering.
+     */
+    public RetrievalResult retrieveContextWithTrace(String query) {
+        if (vectorStore == null || query == null || query.isBlank()) {
+            return new RetrievalResult(NO_CONTEXT, List.of());
+        }
 
         // Step 1: Initial retrieval — fetch topK+5 candidates to give the reranker
         // a wider pool to work with.  Fetching extra candidates is a standard trick:
@@ -119,7 +150,7 @@ public class RetrievalTool {
                 .build();
 
         List<Document> candidates = vectorStore.similaritySearch(request);
-        if (candidates == null || candidates.isEmpty()) return NO_CONTEXT;
+        if (candidates == null || candidates.isEmpty()) return new RetrievalResult(NO_CONTEXT, List.of());
 
         // Step 2: Reranking (RAG level 3) — re-score candidates using BM25-style
         // term-overlap scoring and return the top topK after reranking.
@@ -140,12 +171,28 @@ public class RetrievalTool {
         //    a single-stage retrieval with a smaller K."
         List<Document> reranked = rerankingService.rerank(candidates, query, topK);
 
+        // Recompute each surviving chunk's two scores for display. rerank()
+        // only returns the reordered Documents, not the scores it used
+        // internally, so we recompute the same (cheap, local) scoring here.
+        Set<String> queryTerms = rerankingService.tokenize(query);
+        List<RankedChunk> trace = new ArrayList<>();
+        for (int i = 0; i < reranked.size(); i++) {
+            Document doc = reranked.get(i);
+            String text = doc.getText();
+            double cosine = doc.getScore() != null ? doc.getScore() : 0.0;
+            double rerankScore = rerankingService.jaccardScore(rerankingService.tokenize(text), queryTerms);
+            String preview = text.length() > 120 ? text.substring(0, 120) + "…" : text;
+            trace.add(new RankedChunk(preview, cosine, rerankScore, i + 1));
+        }
+
         // Step 3: Concatenate reranked chunks into a single context block.
         // The --- delimiter helps the LLM distinguish between source chunks.
         // Book ref: Ch 20 — label the context block so the model sees clear anchors.
-        return reranked.stream()
+        String context = reranked.stream()
                 .map(Document::getText)
                 .collect(Collectors.joining("\n---\n"));
+
+        return new RetrievalResult(context, trace);
     }
 
     /**
